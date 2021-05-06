@@ -41,7 +41,7 @@
   <body>
     <div class="container-lg px-3 my-5 markdown-body">
       <h1>
-        <a href="./">binaries</a>
+        <a href="./">fenrir-naru/archives/</a>
         <form id="search_form" autocomplete="off">
           <input id="search_input">
         </form>
@@ -106,18 +106,18 @@
           owner: 'fenrir-naru',
           repo: 'archives',
           branch: 'main',
-          filter: /^docs\//,
+          reject: /^docs\//,
         }
         const req_sha = await request('GET /repos/{owner}/{repo}/git/ref/heads/{branch}', props);
         const sha = req_sha.data.object.sha
         const req = await request('GET /repos/{owner}/{repo}/git/trees/{tree_sha}',
             Object.assign(props, {tree_sha: sha, recursive: true}));
         const data = req.data.tree.filter((item) => {
-          return (item.type == "blob") && (props.filter.test(item.path));
+          return (item.type == "blob") && (!props.reject.test(item.path));
         }).map((item) => {
           return Object.assign(item, {
             raw_url: `https://raw.githubusercontent.com/${props.owner}/${props.repo}/${sha}/${item.path}`,
-            display_name: item.path.replace(props.filter, ''),
+            display_name: item.path,
           })
         });
         
