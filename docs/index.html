@@ -1,8 +1,107 @@
 <html>
+  <head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#ff473e">
+    <title>fenrir-naru/archives</title>
+    <meta property="og:title" content="recipes">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:url" content="https://www.timetler.com/recipes/">
+    <meta property="og:site_name" content="recipes">
+    <link rel="canonical" href="https://www.timetler.com/recipes/">
+    <link rel="stylesheet" href="./assets/css/style.css">
+    <link rel="icon" href="./favicon.png" type="image/png" />
+    <link rel="manifest" href="./manifest.json">
+    <link rel="apple-touch-icon" sizes="180x180" href="favicon-180.png">
+    <link type="application/opensearchdescription+xml" rel="search" href="./search.xml"/>
+    <style>
+      body {
+        overflow-y: scroll;
+      }
+      .markdown-body h1 {
+        display: flex;
+      }
+      .markdown-body form {
+        margin-left: 10px;
+      }
+      .markdown-body input {
+        color: #808080;
+        font-weight: 400;
+        margin: 0;
+        padding: 0 10px;
+        border: 1px solid #eaecef;
+        border-radius: 3px;
+        width: 100%;
+        flex: 1 1;
+      }
+    </style>
+  </head>
   <body>
+    <div class="container-lg px-3 my-5 markdown-body">
+      <h1>
+        <a href="./">binaries</a>
+        <form id="search_form" autocomplete="off">
+          <input id="search_input">
+        </form>
+      </h1>
+      <ul id="list">
+      </ul>
+    </div>
     <script type="module">
+      // Filter files by search term match and clean out non recipe files
+      const filterFiles = (filter) => {
+        filter = filter.toLowerCase()
+        return (file) => {
+          const filePath = file.path;
+          const fileName = filePath.replace(/\..*$/, '').toLowerCase().replace(/-/g, '');
+          const isInFilter = filter.split(' ')
+            .every((token) => fileName.indexOf(token.toLowerCase()) !== -1)
+          return isInFilter;
+        }
+      }
+      // Match by closest to start of word then earliest word
+      const matchScore = (file, filter) => {
+        const fileWords = file.display_name.replace(/\..*$/, '').toLowerCase().split('-');
+        filter = filter.toLowerCase()
+        let wordIndex;
+        let letterPosition;
+        for (wordIndex = 0; wordIndex < fileWords.length; wordIndex++) {
+          letterPosition = fileWords[wordIndex].indexOf(filter)
+          if (letterPosition > -1) break;
+        }
+        if (letterPosition < 0) {
+          letterPosition = 100;
+        }
+        return wordIndex + letterPosition * 100;
+      }
+      // Sort files by best match
+      const sortFiles = (filter) => {
+        filter = filter.toLowerCase()
+        return (fileA, fileB) => {
+          return matchScore(fileA, filter) < matchScore(fileB, filter) ? -1 : 1;
+        }
+      }
+      // Render search result list
+      const updateList = (data, filter = '') => {
+        let htmlString = '';
+        for (let file of data.filter(filterFiles(filter)).sort(sortFiles(filter))) {
+          htmlString += `<li><a href="${file.raw_url}">${file.display_name}</a></li>`;
+        }
+        document.getElementById('list').innerHTML = htmlString;
+      }
+      // Quick navigate to file if perfect match
+      const navigateToFile = (data, filter = '') => {
+        let files = data.filter(filterFiles(filter));
+        if (files.length === 1) {
+          document.location = files[0].raw_url;
+        }
+      }
+      
       import { request } from "https://cdn.skypack.dev/@octokit/request";
       (async () => {
+        // Get GitHub repository file info
         const props = {
           owner: 'fenrir-naru',
           repo: 'archives',
@@ -13,16 +112,38 @@
         const sha = req_sha.data.object.sha
         const req = await request('GET /repos/{owner}/{repo}/git/trees/{tree_sha}',
             Object.assign(props, {tree_sha: sha, recursive: true}));
-        let htmlString = '<ul>';
-        for (let file of req.data.tree) {
-          if(file.type != "blob"){continue;}
-          if(!props.filter.test(file.path)){continue;}
-          let fname = file.path.replace(props.filter, '');
-          htmlString += `<li><a href="https://raw.githubusercontent.com/${props.owner}/${props.repo}/${sha}/${file.path}">${fname}</a></li>`;
-        }
-        htmlString += '</ul>';
-        document.getElementsByTagName('body')[0].innerHTML = htmlString;
+        const data = req.data.tree.filter((item) => {
+          return (item.type == "blob") && (props.filter.test(item.path));
+        }).map((item) => {
+          return Object.assign(item, {
+            raw_url: `https://raw.githubusercontent.com/${props.owner}/${props.repo}/${sha}/${item.path}`,
+            display_name: item.path.replace(props.filter, ''),
+          })
+        });
+        
+        // Initialize search fields and results
+        const search_form = document.getElementById('search_form');
+        const search_input = document.getElementById('search_input');
+        const search_value = decodeURIComponent(document.location.search.replace('?', '').replace(/\+/g, ' '));
+        search_input.value = search_value;
+        //navigateToFile(data, search_value);
+        updateList(data, search_value);
+        // Configure search box events
+        search_form.addEventListener('submit', (event) => {
+          event.preventDefault();
+          navigateToFile(data, search_input.value);
+        })
+        search_input.addEventListener('input', (event) => {
+          updateList(data, event.target.value);
+        })
+        document.addEventListener('keypress', (event) => {
+          search_input.focus()
+        })
       })()
+      // Register service worker
+      if (navigator.serviceWorker && !navigator.serviceWorker.controller) {
+        navigator.serviceWorker.register('./serviceworker.js');
+      }
     </script>
   <body>
 </html>
