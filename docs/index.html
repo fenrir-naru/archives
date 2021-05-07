@@ -52,35 +52,32 @@
     <script type="module">
       // Filter files by search term match and clean out non recipe files
       const filterFiles = (filter) => {
-        filter = filter.toLowerCase()
         return (file) => {
-          const filePath = file.path;
-          const fileName = filePath.replace(/\..*$/, '').toLowerCase().replace(/-/g, '');
-          const isInFilter = filter.split(' ')
-            .every((token) => fileName.indexOf(token.toLowerCase()) !== -1)
-          return isInFilter;
+          return filter.toLowerCase().split(' ').every((token) => {
+            return file.keywords.some((key) => {
+              return (key.indexOf(token) > -1);
+            });
+          });
         }
-      }
-      // Match by closest to start of word then earliest word
-      const matchScore = (file, filter) => {
-        const fileWords = file.display_name.replace(/\..*$/, '').toLowerCase().split('-');
-        filter = filter.toLowerCase()
-        let wordIndex;
-        let letterPosition;
-        for (wordIndex = 0; wordIndex < fileWords.length; wordIndex++) {
-          letterPosition = fileWords[wordIndex].indexOf(filter)
-          if (letterPosition > -1) break;
-        }
-        if (letterPosition < 0) {
-          letterPosition = 100;
-        }
-        return wordIndex + letterPosition * 100;
       }
       // Sort files by best match
       const sortFiles = (filter) => {
-        filter = filter.toLowerCase()
+        filter = filter.toLowerCase().split(' ');
+        let matchScore = (file) => {
+          let score = 0;
+          let hit1 = filter.every((token, i) => {
+            let wordIndex = 0, letterPosition = 0;
+            let hit2 = file.keywords.some((key, j) => {
+              wordIndex = j;
+              return (letterPosition = key.indexOf(token)) > -1;
+            });
+            score += (wordIndex + (letterPosition * 1E2)) * (i + 1) * 1E2;
+            return hit2;
+          });
+          return hit1 ? score : 1E6;
+        }
         return (fileA, fileB) => {
-          return matchScore(fileA, filter) < matchScore(fileB, filter) ? -1 : 1;
+          return matchScore(fileA) < matchScore(fileB) ? -1 : 1;
         }
       }
       // Render search result list
@@ -118,6 +115,16 @@
           return Object.assign(item, {
             raw_url: `https://raw.githubusercontent.com/${props.owner}/${props.repo}/${sha}/${item.path}`,
             display_name: item.path,
+            keywords: item.path.split('/').reverse().map((token, index) => {
+                  let res = token.split(/[\.]+/).reverse().map((i) => i.toLowerCase());
+                  if(index !== 0){return res;}
+                  if(res[0] === 'gz' && res[1] === 'tar'){
+                    res = res.slice(2);
+                  }else if(res.length > 1){
+                    res = res.slice(1);
+                  }
+                  return res;
+                }).flat().reverse(),
           })
         });
         
