@@ -36,6 +36,27 @@
         width: 100%;
         flex: 1 1;
       }
+      #list a:hover {
+        position: relative;
+      }
+      #list a:hover:after {
+        content: attr(date);
+      
+        position: absolute;
+        left: 0;
+        top: 32px;
+        z-index: 1;
+
+        font-weight: normal;
+        color: black;
+        white-space: nowrap;
+
+        background-color: white;
+        padding: 3px;
+        border: 1px silver solid;
+        border-radius: 3px;
+        box-shadow: 1px 1px 3px silver;
+      }
     </style>
   </head>
   <body>
@@ -84,7 +105,7 @@
       const updateList = (data, filter = '') => {
         let htmlString = '';
         for (let file of data.filter(filterFiles(filter)).sort(sortFiles(filter))) {
-          htmlString += `<li><a href="${file.raw_url}">${file.display_name}</a></li>`;
+          htmlString += `<li><a href="${file.raw_url}" date="${file.commit.commit.committer.date}">${file.display_name}</a></li>`;
         }
         document.getElementById('list').innerHTML = htmlString;
       }
@@ -109,9 +130,9 @@
         const sha = req_sha.data.object.sha
         const req = await request('GET /repos/{owner}/{repo}/git/trees/{tree_sha}',
             Object.assign(props, {tree_sha: sha, recursive: true}));
-        const data = req.data.tree.filter((item) => {
+        const data = await Promise.all(req.data.tree.filter((item) => {
           return (item.type == "blob") && (!props.reject.test(item.path));
-        }).map((item) => {
+        }).map(async (item) => {
           return Object.assign(item, {
             raw_url: `https://raw.githubusercontent.com/${props.owner}/${props.repo}/${sha}/${item.path}`,
             display_name: item.path,
@@ -125,8 +146,13 @@
                   }
                   return res;
                 }).flat().reverse(),
+            commit: (await request('GET /repos/{owner}/{repo}/commits',
+                Object.assign(props, {
+                  per_page: 1,
+                  path: item.path
+                }))).data[0],
           })
-        });
+        }));
         
         // Initialize search fields and results
         const search_form = document.getElementById('search_form');
